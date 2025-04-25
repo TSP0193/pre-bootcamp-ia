@@ -1,1 +1,40 @@
+# gera_planilha_crimes.py
+import re, requests, pandas as pd
+from bs4 import BeautifulSoup
+from openpyxl import Workbook
 
+diplomas = [
+    ("Código Penal - DL 2.848/1940", "https://www.planalto.gov.br/ccivil_03/decreto-lei/del2848compilado.htm"),
+    ("Lei das Contravenções Penais - DL 3.688/1941", "https://www.planalto.gov.br/ccivil_03/decreto-lei/del3688.htm"),
+    # … (mantenha aqui TODAS as 46 entradas que você listou)
+]
+
+wb = Workbook()
+wb.remove(wb.active)  # remove planilha vazia criada por padrão
+art_regex = re.compile(r"Art\. ?(\d+[-A-Z]*)")  # pega “Art. 121”, “Art. 1-A” etc.
+
+for titulo, url in diplomas:
+    print(f"Baixando {titulo} …")
+    html = requests.get(url, timeout=60).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    linhas = []
+    for tag in soup.find_all(text=art_regex):
+        texto = tag.strip()
+        # normaliza espaços e quebras de linha
+        texto = " ".join(texto.split())
+        if any(p in texto.lower() for p in ("pena", "reclusão", "detenção", "multa")):
+            # divide em “Art. xxx”  |  “descrição”
+            m = art_regex.search(texto)
+            artigo = m.group(0) if m else ""
+            descricao = texto[m.end():].lstrip(" –-: ")
+            linhas.append((descricao, artigo))
+
+    df = pd.DataFrame(linhas, columns=["Tipo penal (descrição resumida)", "Artigo"])
+    ws = wb.create_sheet(title=titulo[:31])  # Excel aceita máx. 31 caracteres no nome da aba
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws.append(r)
+
+arquivo = "crimes_brasil_completo.xlsx"
+wb.save(arquivo)
+print(f"Arquivo gerado: {arquivo}")
